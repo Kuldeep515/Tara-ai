@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Tara AI - Your Smart Assistant</title>
     
-    <!-- Sirf Tailwind, React aur Babel (No external icon libraries to prevent crashes) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -14,31 +13,37 @@
     
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; margin: 0; padding: 0; display: flex; justify-content: center; }
-        /* Desktop par app jaisa view dene ke liye */
         #root-container { width: 100%; max-width: 800px; height: 100vh; background-color: #ffffff; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); position: relative; display: flex; flex-direction: column; overflow: hidden; }
         @media (min-width: 800px) { #root-container { border-left: 1px solid #e2e8f0; border-right: 1px solid #e2e8f0; } }
-        
         .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        
         @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         @keyframes pulse-slow { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
         .animate-pulse-slow { animation: pulse-slow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        #error-log { display: none; padding: 20px; color: red; font-family: monospace; word-wrap: break-word; }
     </style>
 </head>
 <body>
+    <div id="error-log"></div>
     <div id="root-container"></div>
+
+    <script>
+        /* Agar koi error aayega toh white screen ke bajaye error likha aayega */
+        window.addEventListener('error', function(event) {
+            document.getElementById('error-log').style.display = 'block';
+            document.getElementById('error-log').innerText += '\nError: ' + event.message;
+        });
+    </script>
 
     <script type="text/babel">
         const { useState, useEffect, useRef, useCallback } = React;
 
-        // --- GEMINI API KEY ---
-        // Vercel par chalane ke liye aapko yahan apni AI Studio API key daalni hogi tabhi AI reply karega.
+        /* API KEY YAHAN DAALEIN */
         const apiKey = ""; 
 
-        // --- 1. Bulletproof Inline Icons (SVG) ---
+        /* Icons Components */
         const Icons = {
             Sparkles: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg>,
             Send: () => <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>,
@@ -56,7 +61,7 @@
             XCircle: () => <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
         };
 
-        // --- 2. Audio Processing (PCM to WAV) ---
+        /* Functions */
         function pcmToWav(pcmData, sampleRate) {
             const numChannels = 1;
             const bitsPerSample = 16;
@@ -90,7 +95,7 @@
             'Iapetus': { name: 'Dada ji', desc: 'Elderly Male' }
         };
 
-        // --- 3. Interactive Quiz Component ---
+        /* Quiz Component */
         const QuizCard = ({ q, idx }) => {
             const [selected, setSelected] = useState(null);
             return (
@@ -129,7 +134,7 @@
             );
         };
 
-        // --- 4. Main Tara AI App ---
+        /* Main App */
         function App() {
             const [sessions, setSessions] = useState([{ id: Date.now(), title: 'New Chat', messages: [] }]);
             const [currentSessionId, setCurrentSessionId] = useState(sessions[0].id);
@@ -185,7 +190,7 @@
                                 role: m.role === 'user' ? 'user' : 'model',
                                 parts: [{ text: m.content }]
                             })),
-                            systemInstruction: { parts: [{ text: `Tumhara naam Tara AI hai. User memory: ${userMemory.join(', ')}. Image ke liye [GENERATE_IMAGE: prompt] ka use karo. Memory tag [MEMORY: fact] lagao. Hindi/Hinglish me baat karo.` }] }
+                            systemInstruction: { parts: [{ text: `Tumhara naam Tara AI hai. User memory: ${userMemory.join(', ')}. Image ke liye [GENERATE_IMAGE: prompt] ka use karo. Memory tag [MEMORY: fact] lagao. Hindi me baat karo.` }] }
                         })
                     });
 
@@ -193,14 +198,12 @@
                     if (!data.candidates) throw new Error("API Error");
                     let modelText = data.candidates[0].content.parts[0].text;
 
-                    // Memory Parsing
                     const memoryMatch = modelText.match(/\[MEMORY:\s*(.*?)\]/i);
                     if (memoryMatch) {
                         setUserMemory(prev => [...prev, memoryMatch[1]]);
                         modelText = modelText.replace(/\[MEMORY:\s*(.*?)\]/i, '').trim();
                     }
 
-                    // Image Logic
                     if (modelText.includes('[GENERATE_IMAGE:')) {
                         const prompt = modelText.match(/\[GENERATE_IMAGE:\s*(.*?)\]/i)[1];
                         const imgRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
@@ -208,9 +211,8 @@
                             body: JSON.stringify({ instances: { prompt }, parameters: { sampleCount: 1 } })
                         });
                         const imgData = await imgRes.json();
-                        updateMessages(prev => [...prev, { role: 'model', content: 'Lijiye, aapki image taiyar hai:', imageUrl: `data:image/png;base64,${imgData.predictions[0].bytesBase64Encoded}` }]);
+                        updateMessages(prev => [...prev, { role: 'model', content: 'Lijiye, aapki image:', imageUrl: `data:image/png;base64,${imgData.predictions[0].bytesBase64Encoded}` }]);
                     } 
-                    // Audio Logic
                     else if (currentMode === 'audio') {
                         const ttsRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
                             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -227,7 +229,6 @@
                         const audioUrl = URL.createObjectURL(new Blob([wavBuffer], { type: 'audio/wav' }));
                         updateMessages(prev => [...prev, { role: 'model', content: modelText, audioUrl }]);
                     }
-                    // Quiz Logic
                     else if (currentMode === 'quiz') {
                         const jsonMatch = modelText.match(/```json\n?([\s\S]*?)\n?```/i);
                         if (jsonMatch) {
@@ -242,7 +243,7 @@
                         updateMessages(prev => [...prev, { role: 'model', content: modelText }]);
                     }
                 } catch (e) {
-                    updateMessages(prev => [...prev, { role: 'model', content: 'Maaf kijiye, error aa gaya. API key check karein.' }]);
+                    updateMessages(prev => [...prev, { role: 'model', content: 'Maaf kijiye, error aa gaya.' }]);
                 } finally {
                     setIsLoading(false);
                 }
@@ -250,10 +251,8 @@
 
             return (
                 <div className="flex h-full w-full relative">
-                    {/* Mobile Sidebar Overlay */}
                     {sidebarOpen && <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-40 md:hidden" onClick={() => setSidebarOpen(false)} />}
 
-                    {/* Sidebar */}
                     <div className={`absolute md:relative z-50 h-full w-72 bg-slate-50 border-r border-slate-200 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
                         <div className="p-4 border-b flex items-center justify-between bg-white">
                             <button onClick={() => { setSessions([{ id: Date.now(), title: 'New Chat', messages: [] }, ...sessions]); setSidebarOpen(false); }} className="flex-1 flex items-center gap-2 bg-slate-900 text-white px-4 py-3 rounded-xl hover:bg-slate-800 transition-all text-sm font-semibold shadow-md">
@@ -265,4 +264,4 @@
                         <div className="p-4 space-y-4">
                             <div>
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1 mb-1 block">Aawaz (Voice)</label>
-                                
+                                <select value={selectedVoice} onChange={(e) => setSelectedVoice(e.target.value)} className="w-full bg-white border border-slate-200 rounde

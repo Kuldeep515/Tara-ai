@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tara AI - Your Assistant</title>
+    <!-- Sabhi Libraries ek saath -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #ffffff; }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-up { animation: slideUp 0.3s ease-out forwards; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const apiKey = ""; // API Key 
+
+        // --- Helper for Icons ---
+        const Icon = ({ name, size = 18, className = "" }) => {
+            const [svg, setSvg] = useState("");
+            useEffect(() => {
+                if (window.lucide && window.lucide.icons[name]) {
+                    const iconNode = window.lucide.icons[name];
+                    const svgElement = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+                    svgElement.setAttribute("width", size);
+                    svgElement.setAttribute("height", size);
+                    svgElement.setAttribute("viewBox", "0 0 24 24");
+                    svgElement.setAttribute("fill", "none");
+                    svgElement.setAttribute("stroke", "currentColor");
+                    svgElement.setAttribute("stroke-width", "2");
+                    svgElement.classList.add(...className.split(" "));
+                    iconNode[1].forEach(path => {
+                        const p = document.createElementNS("http://www.w3.org/2000/svg", path[0]);
+                        Object.entries(path[1]).forEach(([k, v]) => p.setAttribute(k, v));
+                        svgElement.appendChild(p);
+                    });
+                    setSvg(svgElement.outerHTML);
+                }
+            }, [name, size, className]);
+            return <span dangerouslySetInnerHTML={{ __html: svg }} className="inline-flex" />;
+        };
+
+        // --- Voice Map ---
+        const VOICES = {
+            'Kore': { name: 'Priya', desc: 'Professional Female' },
+            'Orus': { name: 'Rohan', desc: 'Solid Male' },
+            'Iapetus': { name: 'Dada ji', desc: 'Elderly' },
+            'Puck': { name: 'Banti', desc: 'Child' }
+        };
+
+        // --- Quiz Component ---
+        const Quiz = ({ data }) => {
+            const [answers, setAnswers] = useState({});
+            return (
+                <div className="space-y-4 mt-2">
+                    {data.map((q, i) => (
+                        <div key={i} className="bg-white border rounded-2xl p-4 shadow-sm">
+                            <p className="font-bold text-slate-800 mb-3">Q{i+1}. {q.question}</p>
+                            <div className="space-y-2">
+                                {q.options.map((opt, oi) => {
+                                    const isSelected = answers[i] === oi;
+                                    const isCorrect = oi === q.correctAnswerIndex;
+                                    let cls = "border-slate-200 hover:bg-slate-50";
+                                    if(answers[i] !== undefined) {
+                                        if(isCorrect) cls = "bg-green-50 border-green-500 text-green-700";
+                                        else if(isSelected) cls = "bg-red-50 border-red-500 text-red-700";
+                                        else cls = "opacity-50 border-slate-100";
+                                    }
+                                    return (
+                                        <button key={oi} disabled={answers[i] !== undefined} onClick={() => setAnswers({...answers, [i]: oi})} className={`w-full text-left p-3 border rounded-xl text-sm transition-all ${cls}`}>
+                                            {opt}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                            {answers[i] !== undefined && <p className="mt-3 text-xs text-blue-600 bg-blue-50 p-2 rounded-lg"><strong>Karan:</strong> {q.explanation}</p>}
+                        </div>
+                    ))}
+                </div>
+            );
+        };
+
+        function App() {
+            const [msgs, setMsgs] = useState([]);
+            const [input, setInput] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [mode, setMode] = useState('chat'); // chat, image, audio, quiz
+            const [voice, setVoice] = useState('Kore');
+            const [memory, setMemory] = useState([]);
+            const [showTools, setShowTools] = useState(false);
+            const endRef = useRef(null);
+
+            useEffect(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), [msgs, loading]);
+
+            const handleSend = async () => {
+                if(!input.trim()) return;
+                const text = input;
+                const currentMode = mode;
+                setMsgs(prev => [...prev, { role: 'user', content: text }]);
+                setInput(''); setMode('chat'); setShowTools(false);
+                setLoading(true);
+
+                try {
+                    // Logic for Different Modes
+                    let systemPrompt = `Tumhara naam Tara AI hai. User memory: ${memory.join('. ')}. User Hindi bole toh Hindi mein jawab do.`;
+                    let apiInput = text;
+
+                    if(currentMode === 'image') apiInput = `[GENERATE_IMAGE: ${text}]`;
+                    if(currentMode === 'quiz') apiInput = `Create a 5-question quiz about ${text}. Respond ONLY with a JSON array wrapped in \`\`\`json.`;
+
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ contents: [{parts: [{text: apiInput}]}], systemInstruction: {parts: [{text: systemPrompt}]} })
+                    });
+                    const data = await res.json();
+                    let reply = data.candidates[0].content.parts[0].text;
+
+                    // Memory Check
+                    const memMatch = reply.match(/\[MEMORY:\s*(.*?)\]/i);
+                    if(memMatch) { setMemory(p => [...p, memMatch[1]]); reply = reply.replace(/\[MEMORY:.*?\]/g, ''); }
+
+                    // Image Check
+                    if(reply.includes('[GENERATE_IMAGE:')) {
+                        const p = reply.match(/\[GENERATE_IMAGE:\s*(.*?)\]/i)[1];
+                        const imgRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+                            method: 'POST', body: JSON.stringify({instances: {prompt: p}, parameters: {sampleCount: 1}})
+                        });
+                        const imgData = await imgRes.json();
+                        setMsgs(p => [...p, { role: 'model', content: 'Image taiyar hai:', img: `data:image/png;base64,${imgData.predictions[0].bytesBase64Encoded}` }]);
+                    } 
+                    // Quiz Check
+                    else if(currentMode === 'quiz') {
+                        const json = JSON.parse(reply.match(/```json\n?([\s\S]*?)\n?```/)[1]);
+                        setMsgs(p => [...p, { role: 'model', quiz: json }]);
+                    }
+                    // Audio Mode Check
+                    else if(currentMode === 'audio') {
+                        const audRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
+                            method: 'POST', body: JSON.stringify({ contents: [{parts:[{text: reply.replace(/[*#_]/g,'')}]}], generationConfig: {responseModalities:["AUDIO"], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:voice}}}} })
+                        });
+                        const audData = await audRes.json();
+                        setMsgs(p => [...p, { role: 'model', content: reply, audio: `data:audio/wav;base64,${audData.candidates[0].content.parts[0].inlineData.data}` }]);
+                    }
+                    else {
+                        setMsgs(p => [...p, { role: 'model', content: reply }]);
+                    }
+                } catch (e) { setMsgs(p => [...p, { role: 'model', content: 'Maaf kijiye, error aa gaya.' }]); }
+                finally { setLoading(false); }
+            };
+
+            return (
+                <div className="flex flex-col h-screen max-w-2xl mx-auto bg-white border-x">
+                    {/* Header */}
+                    <header className="p-4 border-b flex items-center justify-between bg-white sticky top-0 z-20">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-600 to-pink-500 flex items-center justify-center text-white shadow-lg"><Icon name="Sparkles" /></div>
+                            <h1 className="font-bold text-slate-800 text-lg">Tara AI</h1>
+                        </div>
+                        <select value={voice} onChange={e => setVoice(e.target.value)} className="text-[10px] font-bold border p-1 rounded bg-slate-50 outline-none uppercase">
+                            {Object.entries(VOICES).map(([id, v]) => <option key={id} value={id}>{v.name}</option>)}
+                        </select>
+                    </header>
+
+                    {/* Messages */}
+                    <main className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-slate-50/50">
+                        {msgs.length === 0 && (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center space-y-2">
+                                <Icon name="Sparkles" size={32} />
+                                <p className="text-sm font-medium">Namaste! Main Tara hoon. Kaise madad karun?</p>
+                            </div>
+                        )}
+                        {msgs.map((m, i) => (
+                            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} animate-up`}>
+                                <div className={`max-w-[90%] p-4 rounded-2xl shadow-sm ${m.role === 'user' ? 'bg-slate-900 text-white rounded-tr-none' : m.quiz ? 'p-0 shadow-none' : 'bg-white border text-slate-800 rounded-tl-none'}`}>
+                                    {m.quiz ? <Quiz data={m.quiz} /> : <div className="whitespace-pre-wrap text-[15px]">{m.content}</div>}
+                                    {m.img && <img src={m.img} className="mt-3 rounded-xl border w-full shadow-md" />}
+                                    {m.audio && <audio src={m.audio} controls className="mt-3 h-8 w-full" />}
+                                </div>
+                            </div>
+                        ))}
+                        {loading && <div className="p-3 bg-white border rounded-xl inline-block text-slate-400 text-xs font-bold animate-pulse">Tara soch rahi hai...</div>}
+                        <div ref={endRef} />
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="p-4 bg-white border-t">
+                        <div className="max-w-xl mx-auto">
+                            {mode !== 'chat' && <div className="mb-2 text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded w-fit uppercase flex items-center gap-1">{mode} Mode On <span onClick={()=>setMode('chat')} className="cursor-pointer ml-1 text-slate-400">✕</span></div>}
+                            <div className="relative flex items-end gap-2 bg-slate-100 p-2 rounded-3xl border focus-within:bg-white transition-all shadow-sm">
+                                <div className="relative">
+                                    <button onClick={() => setShowTools(!showTools)} className={`p-2 rounded-full transition-all ${showTools ? 'bg-slate-900 text-white rotate-45' : 'text-slate-400'}`}><Icon name="Plus" size={22} /></button>
+                                    {showTools && (
+                                        <div className="absolute bottom-full left-0 mb-3 w-44 bg-white border shadow-2xl rounded-2xl p-2 z-50 animate-up">
+                                            <button onClick={()=>{setMode('image');setShowTools(false)}} className="w-full text-left p-2 hover:bg-slate-50 rounded-lg text-xs font-bold flex items-center gap-2"><Icon name="Image" size={14}/> Image Gen</button>
+                                            <button onClick={()=>{setMode('audio');setShowTools(false)}} className="w-full text-left p-2 hover:bg-slate-50 rounded-lg text-xs font-bold flex items-center gap-2"><Icon name="Music" size={14}/> Audio Mode</button>
+                                            <button onClick={()=>{setMode('quiz');setShowTools(false)}} className="w-full text-left p-2 hover:bg-slate-50 rounded-lg text-xs font-bold flex items-center gap-2"><Icon name="ListTodo" size={14}/> Generate Quiz</button>
+                                        </div>
+                                    )}
+                                </div>
+                                <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => {if(e.key==='Enter' && !e.shiftKey){e.preventDefault(); handleSend();}}} placeholder="Tara se baatein karein..." className="flex-1 bg-transparent border-none outline-none py-2 px-1 text-sm max-h-32 resize-none" rows="1" />
+                                <button onClick={handleSend} className="p-3 bg-slate-900 text-white rounded-full"><Icon name="Send" size={18}/></button>
+                            </div>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
+```
+  
